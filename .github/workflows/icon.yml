@@ -1,0 +1,21 @@
+name: Compile Assets.car
+on:
+  push:
+    branches: [icon-build]
+jobs:
+  actool:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          mkdir out
+          xcrun actool Resources/Assets.xcassets --compile out --platform macosx \
+            --minimum-deployment-target 13.0 --app-icon AppIcon \
+            --output-partial-info-plist out/partial.plist \
+            --output-format human-readable-text --notices --warnings --errors
+          ls -la out
+          cat out/partial.plist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: assets
+          path: out/
