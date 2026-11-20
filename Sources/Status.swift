@@ -1,6 +1,7 @@
 // Status payload shared between HeatBar instances.
 // v2 adds snake_case fields; the v1 camelCase fields are still sent so 1.1 viewers keep working.
 
+import CoreGraphics
 import Foundation
 
 enum Verdict: String {
@@ -44,6 +45,7 @@ struct Status {
     var peak1h: Double
     var verdict: String?
     var top: TopProcess?
+    var userIdle: Double?   // seconds since the last keyboard or mouse input on that Mac
 
     var isThrottling: Bool { thermalState == "serious" || thermalState == "critical" }
 
@@ -66,6 +68,7 @@ struct Status {
         if let time { d["time"] = Self.isoFormatter().string(from: time) }
         if let ssd { d["ssd"] = ssd }
         if let verdict { d["verdict"] = verdict }
+        if let userIdle { d["user_idle"] = Int(userIdle) }
         if let top {
             d["top_process"] = ["name": top.name, "cpu": top.cpu]
             d["topProcess"] = String(format: "%@ (%.1f%% CPU)", top.name, top.cpu)
@@ -91,7 +94,8 @@ struct Status {
             ssd: num("ssd"),
             thermalState: (d["thermal_state"] ?? d["thermalState"]) as? String ?? "unknown",
             peak1h: num("peak_1h", "peakHour") ?? chipMax,
-            verdict: d["verdict"] as? String)
+            verdict: d["verdict"] as? String,
+            userIdle: num("user_idle"))
         if let t = d["top_process"] as? [String: Any], let name = t["name"] as? String {
             s.top = TopProcess(name: name, cpu: (t["cpu"] as? NSNumber)?.doubleValue ?? 0)
         } else if let t = d["topProcess"] as? String,
@@ -111,6 +115,11 @@ func thermalName(_ s: ProcessInfo.ThermalState) -> String {
     case .critical: "critical"
     @unknown default: "unknown"
     }
+}
+
+/// Seconds since the last keyboard, mouse or trackpad input in this login session.
+func userIdleSeconds() -> Double {
+    CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
 }
 
 /// Busiest process by CPU, via ps. Call off the main thread.

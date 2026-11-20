@@ -78,7 +78,7 @@ struct DeviceState {
     }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUserNotificationCenterDelegate {
     private let localID = "local"
     private let defaults = UserDefaults.standard
     private let started = Date()
@@ -104,6 +104,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         get { let v = defaults.double(forKey: "threshold"); return v == 0 ? 90 : v }
         set { defaults.set(newValue, forKey: "threshold") }
     }
+    private var titleShowsHottest: Bool {
+        get { defaults.string(forKey: "menuBarShows") == "hottest" }
+        set { defaults.set(newValue ? "hottest" : "this", forKey: "menuBarShows") }
+    }
     // Overridable for testing two instances on one Mac, e.g. -port 8766 -debugSelfAsPeer YES
     private var listenPort: UInt16 { UInt16(clamping: defaults.integer(forKey: "port") > 0 ? defaults.integer(forKey: "port") : 8765) }
     private var peerPort: Int { defaults.integer(forKey: "peerPort") > 0 ? defaults.integer(forKey: "peerPort") : 8765 }
@@ -121,6 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         item.menu = menu
 
+        UNUserNotificationCenter.current().delegate = self
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         devices[localID] = DeviceState(id: localID, name: Host.current().localizedName ?? "This Mac", isLocal: true)
@@ -146,7 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                           thermalState: thermalName(ProcessInfo.processInfo.thermalState),
                           peak1h: d.history.map(\.1).max() ?? r.chipMax,
                           verdict: Verdict(temp: r.chipMax, threshold: threshold).rawValue,
-                          top: latestTop)
+                          top: latestTop, userIdle: userIdleSeconds())
         d.lastOK = now
         devices[localID] = d
         evaluateAlerts(localID)
@@ -177,15 +182,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         PeerDiscovery.scan { [weak self] scan, note in
             guard let self else { return }
             guard let scan else {
-                if self.tailscaleOK != false { HeatLog.write("discovery: \(note); serving on all interfaces") }
+                if self.tailscaleOK != false { HeatLog.write("discovery: \(note); not serving") }
                 self.tailscaleOK = false
-                self.server.bind(to: nil)
+                self.server.bind(to: [])
                 self.updateTitle()
                 return
             }
             if self.tailscaleOK != true { HeatLog.write("discovery: tailscale ok, \(scan.macPeers.count) other Mac(s) on the tailnet") }
             self.tailscaleOK = true
-            self.server.bind(to: scan.selfIPs.isEmpty ? nil : scan.selfIPs)
+            self.server.bind(to: scan.selfIPs)
             self.devices[self.localID]?.ip = scan.selfIPs.first { $0.contains(".") }
 
             var peers = scan.macPeers
@@ -338,7 +343,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !force, let last = d.lastAlert[key], now.timeIntervalSince(last) < Timing.alertCooldown { return }
         d.lastAlert[key] = now
         devices[id] = d
+        if let other = watchedPeer() {
+            return HeatLog.write("ALERT (shown on \(other)): \(title)")
+        }
         post(title, body)
+    }
+
+    /// Every Mac evaluates every alert, but only the one the user touched most recently shows it.
+    /// Returns the name of an online peer with more recent input than this Mac, or nil if this Mac should show it.
+    /// Peers older than 2.1 don't report idle time and never take alerts away.
+    private func watchedPeer() -> String? {
+        guard let mine = devices[localID]?.status?.userIdle else { return nil }
+        let now = Date()
+        return devices.values
+            .filter { !$0.isLocal && $0.presence(at: now) == .online }
+            .compactMap { d in d.status?.userIdle.map { (d.name, $0) } }
+            .filter { $0.1 < mine }
+            .min { $0.1 < $1.1 }?.0
     }
 
     private func post(_ title: String, _ body: String) {
@@ -368,21 +389,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func updateTitle() {
         let now = Date()
+        if titleShowsHottest {
+            let hottest = devices.values
+                .filter { $0.presence(at: now) != .offline && $0.status != nil }
+                .max { $0.status!.chipMax < $1.status!.chipMax }
+            guard let h = hottest, let t = h.status?.chipMax else { return setTitle("🖥 n/a", nil) }
+            let name = h.isLocal ? "" : " " + (h.name.count > 12 ? h.name.prefix(11) + "…" : h.name)
+            return setTitle(String(format: "🖥 %.0f°", t) + name, titleColor(t))
+        }
         let otherNotCool = devices.values.contains { d in
             guard !d.isLocal, d.presence(at: now) != .offline, let s = d.status else { return false }
             return Verdict(temp: s.chipMax, threshold: threshold) != .cool
         }
         let mark = otherNotCool ? " ⚠︎" : ""
         guard let t = devices[localID]?.status?.chipMax else { return setTitle("🖥 n/a" + mark, nil) }
-        let color: NSColor? = t >= threshold ? .systemRed : (t >= threshold - 15 ? .systemOrange : nil)
-        setTitle(String(format: "🖥 %.0f°", t) + mark, color)
+        setTitle(String(format: "🖥 %.0f°", t) + mark, titleColor(t))
+    }
+
+    private func titleColor(_ t: Double) -> NSColor? {
+        t >= threshold ? .systemRed : (t >= threshold - 15 ? .systemOrange : nil)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         let now = Date()
+        // This Mac first, then the hottest; offline Macs last.
         let sorted = devices.values.sorted {
             if $0.isLocal != $1.isLocal { return $0.isLocal }
+            let off0 = $0.presence(at: now) == .offline, off1 = $1.presence(at: now) == .offline
+            if off0 != off1 { return off1 }
+            let t0 = $0.status?.chipMax ?? -1, t1 = $1.status?.chipMax ?? -1
+            if !off0 && t0 != t1 { return t0 > t1 }
             return $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
         }
         let online = sorted.filter { $0.presence(at: now) == .online }.count
@@ -419,6 +456,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let th = NSMenuItem(title: "Alert above…", action: nil, keyEquivalent: "")
         th.submenu = sub
         menu.addItem(th)
+        let shows = NSMenu()
+        for (title, hottest) in [("This Mac", false), ("Hottest Mac", true)] {
+            let i = NSMenuItem(title: title, action: #selector(setTitleShows(_:)), keyEquivalent: "")
+            i.target = self
+            i.representedObject = hottest
+            i.state = hottest == titleShowsHottest ? .on : .off
+            shows.addItem(i)
+        }
+        let sh = NSMenuItem(title: "Menu bar shows…", action: nil, keyEquivalent: "")
+        sh.submenu = shows
+        menu.addItem(sh)
         menu.addItem(action("Send test alert", #selector(testAlert)))
         menu.addItem(action("Open log", #selector(openLog)))
         menu.addItem(action("Rescan tailnet", #selector(rescanNow)))
@@ -481,6 +529,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         threshold = s.representedObject as! Double
         for id in devices.keys { devices[id]?.hotSince = nil }
         updateTitle()
+    }
+
+    @objc private func setTitleShows(_ s: NSMenuItem) {
+        titleShowsHottest = s.representedObject as! Bool
+        updateTitle()
+    }
+
+    // Without this, notifications posted while HeatBar is the active app (e.g. right after a menu click)
+    // go straight to Notification Center with no banner.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .sound])
     }
 
     @objc private func testAlert() {

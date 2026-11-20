@@ -8,7 +8,7 @@
 #   NOTARY_PROFILE  notarytool keychain profile; when set, the app is notarized and stapled
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="2.0"
+VERSION="2.1"
 LABEL="${BUNDLE_ID:-local.heatbar}"
 SIGN_ID="${SIGN_ID:--}"
 NAME="HeatBar-$VERSION"

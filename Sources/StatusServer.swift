@@ -1,5 +1,5 @@
 // Minimal HTTP server for /, /status and /ping on plain BSD sockets.
-// Binds to the given addresses (the Tailscale IPs), or to all interfaces when given nil.
+// Binds only to the given addresses (this Mac's Tailscale IPs).
 // Not Network.framework: an NWListener bound to the Tailscale IP never completed the TCP handshake
 // for connections from the same Mac.
 
@@ -21,10 +21,10 @@ final class StatusServer {
         self.route = route
     }
 
-    /// Listens on exactly these addresses (nil = all interfaces). Called on every discovery scan, so an
+    /// Listens on exactly these addresses; an empty list stops serving. Called on every discovery scan, so an
     /// address that failed to bind (e.g. port still held by a quitting copy) is retried a minute later.
-    func bind(to addresses: [String]?) {
-        let wanted = Set(addresses ?? ["0.0.0.0", "::"])
+    func bind(to addresses: [String]) {
+        let wanted = Set(addresses)
         for (addr, src) in sources where !wanted.contains(addr) {
             src.cancel()
             sources[addr] = nil
@@ -124,14 +124,12 @@ final class StatusServer {
         }
     }
 
-    /// Answers only localhost, Tailscale (100.64/10, fd7a:115c:a1e0::/48) and private LAN peers.
-    /// Matters when bound to all interfaces; with a Tailscale bind only tailnet peers can connect anyway.
+    /// Answers only Tailscale addresses (100.64/10, fd7a:115c:a1e0::/48). macOS also delivers packets for the
+    /// Tailscale IP that arrive on other interfaces, so the bind alone doesn't keep LAN hosts out.
     private func allowed(_ host: String) -> Bool {
-        var h = host.split(separator: "%").first.map(String.init) ?? ""
-        if h.hasPrefix("::ffff:") { h = String(h.dropFirst(7)) }
-        if h == "127.0.0.1" || h == "::1" || h.lowercased().hasPrefix("fd7a:115c:a1e0:") { return true }
-        if h.hasPrefix("192.168.") || h.hasPrefix("10.") { return true }
+        let h = host.split(separator: "%").first.map(String.init) ?? ""
+        if h.lowercased().hasPrefix("fd7a:115c:a1e0:") { return true }
         let o = h.split(separator: ".").compactMap { Int($0) }
-        return o.count == 4 && ((o[0] == 100 && (64...127).contains(o[1])) || (o[0] == 172 && (16...31).contains(o[1])))
+        return o.count == 4 && o[0] == 100 && (64...127).contains(o[1])
     }
 }
