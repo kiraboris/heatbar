@@ -8,14 +8,14 @@
 #   NOTARY_PROFILE  notarytool keychain profile; when set, the app is notarized and stapled
 set -euo pipefail
 cd "$(dirname "$0")"
-VERSION="2.1"
+VERSION="2.1.1"
 LABEL="${BUNDLE_ID:-local.heatbar}"
 SIGN_ID="${SIGN_ID:--}"
 NAME="HeatBar-$VERSION"
 
 rm -rf build dist
 mkdir -p build/HeatBar.app/Contents/MacOS build/HeatBar.app/Contents/Resources "dist/$NAME"
-cp Resources/AppIcon.icns build/HeatBar.app/Contents/Resources/
+cp Resources/AppIcon.icns Resources/Assets.car build/HeatBar.app/Contents/Resources/
 for arch in arm64 x86_64; do
   swiftc -O -swift-version 5 -target "$arch-apple-macos13" Sources/*.swift \
     -o "build/HeatBar-$arch" -framework AppKit -framework UserNotifications
@@ -30,6 +30,7 @@ cat > build/HeatBar.app/Contents/Info.plist <<PL
  <key>CFBundleName</key><string>HeatBar</string>
  <key>CFBundleExecutable</key><string>HeatBar</string>
  <key>CFBundleIconFile</key><string>AppIcon</string>
+ <key>CFBundleIconName</key><string>AppIcon</string>
  <key>CFBundlePackageType</key><string>APPL</string>
  <key>CFBundleShortVersionString</key><string>$VERSION</string>
  <key>CFBundleVersion</key><string>$VERSION</string>

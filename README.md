@@ -18,10 +18,10 @@ The menu bar shows this Mac's temperature, with a ⚠︎ when another Mac is not
 
 ## Install
 
-Download `HeatBar-2.1.zip`, unzip it, and run:
+Download `HeatBar-2.1.1.zip`, unzip it, and run:
 
 ```bash
-bash ~/Downloads/HeatBar-2.1/install.sh
+bash ~/Downloads/HeatBar-2.1.1/install.sh
 ```
 
 This copies `HeatBar.app` to `~/Applications`, clears the download quarantine flag, and adds a launch agent named after the app's bundle ID so HeatBar starts at login. To remove it, run `uninstall.sh` from the same folder.
@@ -72,7 +72,7 @@ Every Mac checks every device, but only one shows the notification: the Mac with
 {
   "v": 2,
   "host": "Studio Mac mini",
-  "app_version": "2.1",
+  "app_version": "2.1.1",
   "time": "2026-11-19T22:50:26+08:00",
   "chip_max": 34.4, "chip_avg": 32.8, "ssd": 31.0,
   "thermal_state": "nominal",
@@ -93,7 +93,7 @@ Needs the Xcode command-line tools (`xcode-select --install`). The app icon is d
 ./build.sh
 ```
 
-This builds a universal (arm64 + x86_64) `build/HeatBar.app` and packages `dist/HeatBar-2.1.zip` with the app, the install scripts and this README. By default the app is signed ad hoc with the bundle ID `local.heatbar`.
+This builds a universal (arm64 + x86_64) `build/HeatBar.app` and packages `dist/HeatBar-2.1.1.zip` with the app, the install scripts and this README. By default the app is signed ad hoc with the bundle ID `local.heatbar`.
 
 For a release build, set these before running `build.sh`:
 

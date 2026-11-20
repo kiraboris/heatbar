@@ -1,0 +1,36 @@
+# Rebuilds the app icon files after scripts/make-icon.swift changes.
+# macOS 26 reads notification icons from Assets.car, which needs Xcode's actool,
+# so this runs on a GitHub macOS runner. Start it under Actions > "App icon" > Run workflow,
+# then copy the downloaded AppIcon.icns and Assets.car into Resources/.
+name: App icon
+on: workflow_dispatch
+jobs:
+  icon:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Draw icon and compile asset catalog
+        run: |
+          swift scripts/make-icon.swift
+          set=Assets.xcassets/AppIcon.appiconset
+          mkdir -p "$set" out
+          cp "$TMPDIR"/AppIcon.iconset/*.png "$set"/
+          echo '{"info":{"author":"xcode","version":1}}' > Assets.xcassets/Contents.json
+          {
+            echo '{"images":['
+            for b in 16 32 128 256 512; do
+              echo "{\"filename\":\"icon_${b}x${b}.png\",\"idiom\":\"mac\",\"scale\":\"1x\",\"size\":\"${b}x${b}\"},"
+              sep=","; [ $b = 512 ] && sep=""
+              echo "{\"filename\":\"icon_${b}x${b}@2x.png\",\"idiom\":\"mac\",\"scale\":\"2x\",\"size\":\"${b}x${b}\"}$sep"
+            done
+            echo '],"info":{"author":"xcode","version":1}}'
+          } > "$set/Contents.json"
+          xcrun actool Assets.xcassets --compile out --platform macosx \
+            --minimum-deployment-target 13.0 --app-icon AppIcon \
+            --output-partial-info-plist out/partial.plist --errors --warnings
+          cp Resources/AppIcon.icns out/AppIcon.icns
+          rm out/partial.plist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-icon
+          path: out/

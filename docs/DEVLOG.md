@@ -44,11 +44,13 @@ What we tried, in order:
 - Unregistered every other copy of the app in LaunchServices, because another project traced the same symptom to dead copies. No change.
 - Added a compiled asset catalog (`Assets.car`) with `CFBundleIconName`, since macOS 26 takes app icons from there. Compiling it needs Xcode's `actool`, so it runs on a GitHub macOS runner: see `.github/workflows/icon.yml`. This should be worth keeping for Finder and the Dock on macOS 26, but it didn't fix the notifications.
 
-The system log finally named the problem: `Unable to find notifier for identifier com.<name>.heatbar, fallback to: …/HeatBar.app/`. That was the personal bundle ID of a 1.x build. On macOS 26, notification settings and history no longer live in `com.apple.ncprefs`. They live in `~/Library/Group Containers/group.com.apple.usernoted/` (a preferences plist and a database), and both still referred to the old ID for the same app path. Cleaning that up is the next step.
+The system log finally named the problem: `Unable to find notifier for identifier com.<name>.heatbar, fallback to: …/HeatBar.app/`. That was the personal bundle ID of a 1.x build. On macOS 26, notification settings and history no longer live in `com.apple.ncprefs`. They live in `~/Library/Group Containers/group.com.apple.usernoted/` (a preferences plist and a database), and both still referred to the old ID for the same app path.
+
+The fix: remove the entry with the old bundle ID from the `apps` list in `group.com.apple.usernoted.plist` (`defaults export` and `defaults import` by path, then restart `usernoted`). The "Unable to find notifier" error disappeared from the log right away. The icon itself only appeared after a logout, because another icon cache survives restarting the notification daemons. We can't tell whether `Assets.car` was also needed for the notification icon. We keep it anyway, since macOS 26 uses it for Finder and the Dock.
 
 Lesson: changing a bundle ID leaves old records behind in notification settings, keyed by path. Pick the final bundle ID before anyone installs the app.
 
 ### Releases
 
 - v2.1 is published with the zip attached. The v2.0 pre-release, which still described the fallback, was removed.
-- 2.1.1 (the `Assets.car` icon catalog) is built and waits on the notification-icon fix.
+- v2.1.1 adds the `Assets.car` icon catalog and the manual "App icon" workflow that builds it. The app's code is the same as 2.1.

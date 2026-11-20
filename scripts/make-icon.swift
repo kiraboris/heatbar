@@ -1,5 +1,7 @@
 // Draws the HeatBar app icon and writes Resources/AppIcon.icns.
 // Run from the repo root: swift scripts/make-icon.swift
+// macOS 26 also needs Resources/Assets.car, built with Xcode's actool: run the "App icon" workflow
+// on GitHub (.github/workflows/icon.yml) and copy its AppIcon.icns and Assets.car into Resources/.
 import AppKit
 
 func draw(_ px: Int) -> Data {
