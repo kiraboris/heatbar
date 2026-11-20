@@ -1,3 +1,5 @@
+<img src="docs/icon.png" width="96" alt="HeatBar icon">
+
 # HeatBar
 
 HeatBar is a small menu-bar app that shows the chip temperature of every Mac on your Tailscale network.
@@ -85,7 +87,7 @@ The payload also carries the 1.x field names (`chipMax`, `chipAvg`, `thermalStat
 
 ## Build
 
-Needs the Xcode command-line tools (`xcode-select --install`).
+Needs the Xcode command-line tools (`xcode-select --install`). The app icon is drawn by `scripts/make-icon.swift`; run `swift scripts/make-icon.swift` after changing it.
 
 ```bash
 ./build.sh

@@ -88,6 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
     private var devices: [String: DeviceState] = [:]
     private var probeAttempts: [String: Date] = [:]    // tailnet node ID -> last probe start
     private var tailscaleOK: Bool?
+    private var notificationsAllowed: Bool?
     private var latestTop: TopProcess?
     private var lastPeriodicLog = Date.distantPast
     private var timers: [Timer] = []
@@ -126,7 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         item.menu = menu
 
         UNUserNotificationCenter.current().delegate = self
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.checkNotifications() }
+        }
 
         devices[localID] = DeviceState(id: localID, name: Host.current().localizedName ?? "This Mac", isLocal: true)
         server = StatusServer(port: listenPort) { [weak self] path in self?.route(path) }
@@ -425,6 +428,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
         let online = sorted.filter { $0.presence(at: now) == .online }.count
         menu.addItem(row("\(sorted.count) device\(sorted.count == 1 ? "" : "s") · \(online) online"))
         if tailscaleOK == false { menu.addItem(row("Tailscale not found")) }
+        if notificationsAllowed == false { menu.addItem(action("⚠︎ Notifications are off — Open Settings…", #selector(openNotificationSettings))) }
+        checkNotifications()
 
         for d in sorted {
             menu.addItem(.separator())
@@ -545,7 +550,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, UNUser
 
     @objc private func testAlert() {
         let s = devices[localID]?.status
-        post("HeatBar test", s.map { String(format: "Alerts work. This Mac's chip is at %.0f °C.", $0.chipMax) } ?? "Alerts work.")
+        post("HeatBar", s.map { String(format: "Alerts work. This Mac's chip is at %.0f °C.", $0.chipMax) } ?? "Alerts work.")
+    }
+
+    /// Notifications can be off in System Settings even after the user allowed them once; macOS then drops alerts silently.
+    private func checkNotifications() {
+        UNUserNotificationCenter.current().getNotificationSettings { s in
+            let allowed = s.authorizationStatus == .authorized && s.alertStyle != .none
+            DispatchQueue.main.async { [weak self] in
+                guard let self, allowed != self.notificationsAllowed else { return }
+                self.notificationsAllowed = allowed
+                HeatLog.write("notifications: \(allowed ? "allowed" : "off in System Settings")")
+            }
+        }
+    }
+
+    @objc private func openNotificationSettings() {
+        let id = Bundle.main.bundleIdentifier ?? ""
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)")!)
     }
 
     @objc private func openLog() { NSWorkspace.shared.open(HeatLog.url) }

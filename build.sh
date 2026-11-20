@@ -14,7 +14,8 @@ SIGN_ID="${SIGN_ID:--}"
 NAME="HeatBar-$VERSION"
 
 rm -rf build dist
-mkdir -p build/HeatBar.app/Contents/MacOS "dist/$NAME"
+mkdir -p build/HeatBar.app/Contents/MacOS build/HeatBar.app/Contents/Resources "dist/$NAME"
+cp Resources/AppIcon.icns build/HeatBar.app/Contents/Resources/
 for arch in arm64 x86_64; do
   swiftc -O -swift-version 5 -target "$arch-apple-macos13" Sources/*.swift \
     -o "build/HeatBar-$arch" -framework AppKit -framework UserNotifications
@@ -28,6 +29,7 @@ cat > build/HeatBar.app/Contents/Info.plist <<PL
  <key>CFBundleIdentifier</key><string>$LABEL</string>
  <key>CFBundleName</key><string>HeatBar</string>
  <key>CFBundleExecutable</key><string>HeatBar</string>
+ <key>CFBundleIconFile</key><string>AppIcon</string>
  <key>CFBundlePackageType</key><string>APPL</string>
  <key>CFBundleShortVersionString</key><string>$VERSION</string>
  <key>CFBundleVersion</key><string>$VERSION</string>
